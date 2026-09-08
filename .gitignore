@@ -1,0 +1,7 @@
+/dist/
+/src_payload.zip
+/github_handoff/
+/*.log
+/.pytest_cache/
+/**/__pycache__/
+*.pyc

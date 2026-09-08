@@ -1,0 +1,27 @@
+Fisiere care se pun la radacina depozitului GitHub
+Dimensiuni in octeti
+
+         8  .gitattributes
+      3236  .github/workflows/emp-utility-windows.yml
+        87  .gitignore
+      2195  CE_TESTEAZA_WORKFLOW_UL.md
+      2274  HASHURI_FISIERE_DEPOZIT.sha256
+      2365  INSTRUCTIUNI_INCARCARE_GITHUB.md
+      1148  LISTA_FISIERE_DEPOZIT.txt
+      2407  PORTI_FARA_ECRAN.md
+      2365  README.md
+     11933  build_v13.py
+      1737  ci/Expand-SourcePayload.ps1
+      1265  ci/Invoke-PowerShellParseGate.ps1
+      9884  ci/Invoke-WindowsAcceptance.ps1
+      2907  ci/Test-ZipManifest.ps1
+  20971520  payload_parts/EMP-UTILITY-SOURCE.zip.part001
+  20971520  payload_parts/EMP-UTILITY-SOURCE.zip.part002
+  20971520  payload_parts/EMP-UTILITY-SOURCE.zip.part003
+  20971520  payload_parts/EMP-UTILITY-SOURCE.zip.part004
+  20971520  payload_parts/EMP-UTILITY-SOURCE.zip.part005
+  20971520  payload_parts/EMP-UTILITY-SOURCE.zip.part006
+  20971520  payload_parts/EMP-UTILITY-SOURCE.zip.part007
+  20971520  payload_parts/EMP-UTILITY-SOURCE.zip.part008
+   5082997  payload_parts/EMP-UTILITY-SOURCE.zip.part009
+        89  payload_parts/SOURCE_PAYLOAD.sha256
