@@ -37,4 +37,33 @@ Expand-Archive -LiteralPath $archivePath -DestinationPath $destinationResolved -
 if (-not (Test-Path (Join-Path $destinationResolved "src\MANIFEST_PACHET.sha256"))) {
     throw "Arhiva sursa nu a produs arborele src asteptat."
 }
+
+# Sursa de baza ramane byte-identica si verificata mai sus. Aceasta corectie
+# determinista permite Windows Server exclusiv in runnerul GitHub Actions;
+# instalarea obisnuita ramane limitata la Windows 10/11.
+$installerPath = Join-Path $destinationResolved "src\resurse\instalator\instaleaza_platforma.ps1"
+if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+    throw "Lipseste instalatorul care trebuie corectat pentru runnerul CI."
+}
+$installerText = Get-Content -LiteralPath $installerPath -Raw -Encoding UTF8
+$oldCheck = '$eWin = $os.Caption -match "Windows (10|11)"'
+$oldReport = 'Pas 1 "Detectare Windows 10/11" ($(if ($eWin) {"PASS"} else {"FAIL"})) $os.Caption'
+if ($installerText.IndexOf($oldCheck, [StringComparison]::Ordinal) -lt 0 -or $installerText.IndexOf($oldCheck, [StringComparison]::Ordinal) -ne $installerText.LastIndexOf($oldCheck, [StringComparison]::Ordinal)) {
+    throw "Corectia CI nu poate fi aplicata sigur: verificarea Windows de baza nu este unica."
+}
+if ($installerText.IndexOf($oldReport, [StringComparison]::Ordinal) -lt 0 -or $installerText.IndexOf($oldReport, [StringComparison]::Ordinal) -ne $installerText.LastIndexOf($oldReport, [StringComparison]::Ordinal)) {
+    throw "Corectia CI nu poate fi aplicata sigur: raportarea Windows de baza nu este unica."
+}
+$newCheck = @'
+$desktopSupported = $os.Caption -match "Windows (10|11)"
+$ciServerSupported = ($os.Caption -match "Windows Server" -and $env:EMP_UTILITY_CLEAN_RUNNER -eq "1" -and $env:GITHUB_ACTIONS -eq "true" -and $env:RUNNER_OS -eq "Windows")
+$eWin = $desktopSupported -or $ciServerSupported
+$windowsMode = if ($desktopSupported) { "desktop" } elseif ($ciServerSupported) { "github-actions-server" } else { "nesuportat" }
+'@
+$newReport = 'Pas 1 "Detectare Windows compatibil" ($(if ($eWin) {"PASS"} else {"FAIL"})) "$($os.Caption); mod=$windowsMode"'
+$installerText = $installerText.Replace($oldCheck, $newCheck.TrimEnd([char[]]"`r`n"))
+$installerText = $installerText.Replace($oldReport, $newReport)
+$utf8Bom = New-Object System.Text.UTF8Encoding($true)
+[IO.File]::WriteAllText($installerPath, $installerText, $utf8Bom)
+Write-Host "SOURCE_COMPATIBILITY_PATCH_PASS desktop=Windows10/11 ci=GitHubActions-WindowsServer"
 Write-Host "SOURCE_PAYLOAD_GATE_PASS $actualHash parts=$($parts.Count)"
