@@ -57,7 +57,7 @@ function Write-CiReport([string]$Verdict, $Failure = $null) {
     }
     $html = @(
         "<!doctype html><html><head><meta charset='utf-8'><title>EMP UTILITY CI Windows</title></head><body>",
-        "<h1>EMP UTILITY 1.3 — GitHub Actions Windows</h1>",
+        "<h1>EMP UTILITY 1.3 - GitHub Actions Windows</h1>",
         "<p><b>OS:</b> $([Net.WebUtility]::HtmlEncode($osCaption))</p>",
         "<p><b>Run:</b> $([Net.WebUtility]::HtmlEncode($runIdentity))</p>",
         "<p><b>SHA-256:</b> $packageHash</p>",
