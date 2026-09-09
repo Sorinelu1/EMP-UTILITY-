@@ -1,0 +1,91 @@
+name: EMP UTILITY Windows Acceptance
+
+on:
+  workflow_dispatch:
+  push: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emp-utility-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-windows:
+    name: Build and validate on windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 110
+    env:
+      EMP_UTILITY_CLEAN_RUNNER: "1"
+      PYTHONUTF8: "1"
+    steps:
+      - name: Checkout exact repository commit
+        uses: actions/checkout@v4
+
+      - name: Record runner identity
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          $os = (Get-CimInstance Win32_OperatingSystem).Caption
+          [ordered]@{
+            data_ora_utc = (Get-Date).ToUniversalTime().ToString("o")
+            repository = $env:GITHUB_REPOSITORY
+            commit = $env:GITHUB_SHA
+            run_id = $env:GITHUB_RUN_ID
+            run_attempt = $env:GITHUB_RUN_ATTEMPT
+            run_url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            runner_name = $env:RUNNER_NAME
+            runner_os = $env:RUNNER_OS
+            runner_arch = $env:RUNNER_ARCH
+            sistem_operare = $os
+          } | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 artifacts/INFRASTRUCTURA_WINDOWS.json
+
+      - name: Reassemble the offline source payload
+        shell: powershell
+        run: .\ci\Expand-SourcePayload.ps1
+
+      - name: Bind package to this repository commit
+        shell: powershell
+        run: $env:GITHUB_SHA | Set-Content -Encoding ASCII .\src\SOURCE_COMMIT.txt
+
+      - name: Parse every PowerShell file with Windows PowerShell
+        shell: powershell
+        run: powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\ci\Invoke-PowerShellParseGate.ps1 -Root .
+
+      - name: Build reproducible offline package
+        shell: powershell
+        run: python .\build_v13.py
+
+      - name: Verify ZIP manifest independently on Windows
+        shell: powershell
+        run: .\ci\Test-ZipManifest.ps1 -ZipPath .\dist\EMP-UTILITY-v1.3-R4-CI-Windows.zip -ReportPath .\artifacts\RAPORT_MANIFEST_ZIP_WINDOWS.json
+
+      - name: Install and execute all automated Windows gates
+        shell: powershell
+        run: .\ci\Invoke-WindowsAcceptance.ps1 -ZipPath .\dist\EMP-UTILITY-v1.3-R4-CI-Windows.zip -ArtifactsDirectory .\artifacts
+
+      - name: Publish diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EMP-UTILITY-v1.3-R4-WINDOWS-RAPOARTE-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            artifacts/**
+            LOG_BUILD_R4.txt
+            dist/*.sha256
+
+      - name: Publish package only after all Windows gates pass
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EMP-UTILITY-v1.3-R4-WINDOWS-VALIDAT-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          path: |
+            dist/EMP-UTILITY-v1.3-R4-CI-Windows.zip
+            dist/EMP-UTILITY-v1.3-R4-CI-Windows.zip.sha256
