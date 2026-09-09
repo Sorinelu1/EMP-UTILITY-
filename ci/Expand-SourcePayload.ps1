@@ -77,7 +77,7 @@ $installerText = $installerText.Replace($oldReport, $newReport)
 # pornea direct app\platforma_pte.py si acesta nu putea importa modulele-surori.
 # Un bootstrap Python instalat adauga explicit app\ in sys.path, pastrand -I.
 $oldLauncherCommand = '"%EMP_ROOT%\Runtime\Python\python.exe" -I "%~dp0app\platforma_pte.py" >>"%PTE_DIR_DATE%\loguri\pornire_jurnal.txt" 2>&1'
-$newLauncherCommand = '"%EMP_ROOT%\Runtime\Python\python.exe" -I "%~dp0PORNESTE_EMP_UTILITY.py" >>"%PTE_DIR_DATE%\loguri\pornire_jurnal.txt" 2>&1'
+$newLauncherCommand = '"%EMP_ROOT%\Runtime\Python\python.exe" -X utf8 -I "%~dp0PORNESTE_EMP_UTILITY.py" >>"%PTE_DIR_DATE%\loguri\pornire_jurnal.txt" 2>&1'
 $installerText = Inlocuieste-Unic $installerText $oldLauncherCommand $newLauncherCommand "comanda lansator izolat"
 $launcherComment = '# lansator FARA consola: un .vbs porneste .bat-ul ascuns si arata un mesaj'
 $launcherPythonBlock = @(
@@ -88,6 +88,14 @@ $launcherPythonBlock = @(
     'import os',
     'import sys',
     '',
+    '',
+    'def _configureaza_flux_utf8(flux):',
+    '    if flux is not None and hasattr(flux, "reconfigure"):',
+    '        flux.reconfigure(encoding="utf-8", errors="backslashreplace")',
+    '',
+    '',
+    '_configureaza_flux_utf8(sys.stdout)',
+    '_configureaza_flux_utf8(sys.stderr)',
     '',
     'APP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")',
     'sys.path.insert(0, APP_DIR)',
@@ -217,10 +225,13 @@ $validatorText = $validatorText.Substring(0, $functieVeche.Index) + $newFunction
     $validatorText.Substring($functieVeche.Index + $functieVeche.Length)
 $validatorText = Inlocuieste-Unic $validatorText '$batPornire = Join-Path $app "PORNESTE_PLATFORMA.bat"' ('$batPornire = Join-Path $app "PORNESTE_PLATFORMA.bat"' + "`r`n" + '    $pythonPornire = Join-Path $app "PORNESTE_EMP_UTILITY.py"') "cale bootstrap Python"
 $validatorText = Inlocuieste-Unic $validatorText '$continutBat = $(if (Test-Path $batPornire) { Get-Content $batPornire -Raw } else { "" })' ('$continutBat = $(if (Test-Path $batPornire) { Get-Content $batPornire -Raw } else { "" })' + "`r`n" + '    $continutPython = $(if (Test-Path $pythonPornire) { Get-Content $pythonPornire -Raw } else { "" })') "continut bootstrap Python"
-$validatorText = Inlocuieste-Unic $validatorText '                  $continutBat -match ''pornire_jurnal\.txt'')' ('                  $continutBat -match ''PORNESTE_EMP_UTILITY\.py'' -and' + "`r`n" + '                  $continutBat -match ''pornire_jurnal\.txt'')') "semantica BAT"
+$validatorText = Inlocuieste-Unic $validatorText '                  $continutBat -match ''pornire_jurnal\.txt'')' ('                  $continutBat -match ''-X\s+utf8\s+-I'' -and' + "`r`n" + '                  $continutBat -match ''PORNESTE_EMP_UTILITY\.py'' -and' + "`r`n" + '                  $continutBat -match ''pornire_jurnal\.txt'')') "semantica BAT"
 $oldSemantic = '$semantic = ((Test-Path $vbs) -and (Test-Path $batPornire) -and'
 $newSemantic = @'
 $pythonIzolat = ($continutPython -match 'sys\.path\.insert\(0, APP_DIR\)' -and
+                     $continutPython -match '_configureaza_flux_utf8\(sys\.stdout\)' -and
+                     $continutPython -match '_configureaza_flux_utf8\(sys\.stderr\)' -and
+                     $continutPython -match 'reconfigure\(encoding="utf-8"' -and
                      $continutPython -match 'EMP_UTILITY_HEADLESS' -and
                      $continutPython -match 'deschide_browser=False')
     $semantic = ((Test-Path $vbs) -and (Test-Path $batPornire) -and (Test-Path $pythonPornire) -and
@@ -235,5 +246,5 @@ $validatorText = Inlocuieste-Unic $validatorText '$startOk = Porneste-Si-Verific
 $validatorText = Inlocuieste-Unic $validatorText '$startOk = Porneste-Si-Verifica $start "start_menu"' ('$startOk = Porneste-Si-Verifica $start "start_menu"' + "`r`n" + '        if (-not $startOk) { throw "Scurtatura Start nu a pornit serverul in 30 de secunde" }') "fail rapid Start"
 [IO.File]::WriteAllText($validatorPath, $validatorText, $utf8Bom)
 Write-Host "SOURCE_COMPATIBILITY_PATCH_PASS desktop=Windows10/11 ci=GitHubActions-WindowsServer"
-Write-Host "SOURCE_LAUNCHER_PATCH_PASS isolated=1 headless_ci=1 timeout_seconds=30 diagnostics=1"
+Write-Host "SOURCE_LAUNCHER_PATCH_PASS isolated=1 utf8_stdio=1 headless_ci=1 timeout_seconds=30 diagnostics=1"
 Write-Host "SOURCE_PAYLOAD_GATE_PASS $actualHash parts=$($parts.Count)"
