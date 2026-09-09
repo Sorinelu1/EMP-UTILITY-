@@ -3,6 +3,18 @@
 Acest kit este pregătit pentru un depozit GitHub privat, nou și gol. Nu cere
 token, parolă, GitHub Desktop, Git LFS, PowerShell sau comenzi locale.
 
+## Rezultat validare curentă
+
+Verdict: EMP UTILITY v1.3 R4 — BUILD WINDOWS VALIDAT PE DATE SINTETICE
+
+- Tag: emp-utility-v1.3-r4-windows-pass
+- Run acceptance: #26 — PASS
+- Commit validat: 117502ff7e56300d0cc85b3b889873e2c357ec94
+- Payload SHA-256: c97bfb95e898dfa033ab561bc8955aaba1209c231dd44c16313ab0fc2604157e
+- Vezi Release-ul `emp-utility-v1.3-r4-windows-pass` pentru arhiva validată și rapoartele complete
+
+Limitare: validare automată pe Windows Server 2025 Datacenter (runner GitHub Actions), cu date sintetice de test. Nu dovedește experiența pe Windows 10/11 Desktop cu date reale — vezi PORTI_FARA_ECRAN.md.
+
 ## Încărcare
 
 1. Descarcă arhiva `EMP-UTILITY-v1.3-R4-KIT-GITHUB-R2.zip`.
