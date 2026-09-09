@@ -167,13 +167,42 @@ def validate_runtime_payload() -> None:
 def validate_identity_and_entrypoint() -> None:
     bat = (SOURCE / "00_INSTALEAZA_SI_PORNESTE_EMP_UTILITY.bat").read_text(
         encoding="utf-8-sig")
+    installer = (SOURCE / "resurse/instalator/instaleaza_platforma.ps1").read_text(
+        encoding="utf-8-sig")
+    validator = (SOURCE / "resurse/teste/VALIDEAZA_BUILD_WINDOWS.ps1").read_text(
+        encoding="utf-8-sig")
     if "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" not in bat:
         raise SystemExit("BUILD FAIL: bootstrapul nu fixeaza Windows PowerShell de sistem")
     if re.search(r"(?i)Platforma[- ]PTE", bat):
         raise SystemExit("BUILD FAIL: identitate publica veche in punctul de pornire")
     if not (SOURCE / "COMPATIBILITATE_INTERNA.md").is_file():
         raise SystemExit("BUILD FAIL: lipseste documentarea compatibilitatii interne")
-    print("IDENTITY_ENTRYPOINT_GATE_PASS")
+    launcher_requirements = (
+        'PORNESTE_EMP_UTILITY.py',
+        'sys.path.insert(0, APP_DIR)',
+        'EMP_UTILITY_HEADLESS',
+        'deschide_browser=False',
+        '-I "%~dp0PORNESTE_EMP_UTILITY.py"',
+    )
+    missing = [token for token in launcher_requirements if token not in installer]
+    if missing or '-I "%~dp0app\\platforma_pte.py"' in installer:
+        raise SystemExit(
+            f"BUILD FAIL: lansatorul Python izolat este invalid; lipsa={missing!r}"
+        )
+    validator_requirements = (
+        "function Asteapta-Server-Local",
+        "[DateTime]::UtcNow.AddSeconds($timeoutSecunde)",
+        "$cerere.Proxy = $null",
+        "DIAGNOSTIC_LANSATOR_",
+    )
+    missing_validator = [token for token in validator_requirements
+                         if token not in validator]
+    if missing_validator or "Invoke-RestMethod" in validator:
+        raise SystemExit(
+            "BUILD FAIL: poarta de pornire nu are timeout global/diagnostic; "
+            f"lipsa={missing_validator!r}"
+        )
+    print("IDENTITY_ENTRYPOINT_GATE_PASS isolated_launcher=PASS finite_timeout=PASS")
 
 
 def validate_powershell() -> None:
