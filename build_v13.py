@@ -21,6 +21,8 @@ SIDE_PATH = OUTPUT / (ZIP_PATH.name + ".sha256")
 MANIFEST = SOURCE / "MANIFEST_PACHET.sha256"
 LOG_PATH = ROOT / "LOG_BUILD_R4.txt"
 FIXED_TIME = (2026, 9, 2, 0, 0, 0)
+PARTS_DIRECTORY = ROOT / "payload_parts"
+PART_MAX_BYTES = 15_000_000
 
 
 def digest(path: Path) -> str:
@@ -37,6 +39,59 @@ def cleanup() -> None:
     for path in sorted(SOURCE.rglob("__pycache__"), reverse=True):
         if path.is_dir() and not any(path.iterdir()):
             path.rmdir()
+
+
+def validate_repository_payload() -> None:
+    parts = sorted(PARTS_DIRECTORY.glob("EMP-UTILITY-SOURCE.zip.part*"))
+    if not parts:
+        raise SystemExit("BUILD FAIL: lipsesc partile arhivei sursa")
+    expected_names = [f"EMP-UTILITY-SOURCE.zip.part{i:03d}"
+                      for i in range(1, len(parts) + 1)]
+    actual_names = [path.name for path in parts]
+    if actual_names != expected_names:
+        raise SystemExit(
+            f"BUILD FAIL: partile nu sunt consecutive: {actual_names!r}"
+        )
+    oversized = [(path.name, path.stat().st_size) for path in parts
+                 if path.stat().st_size >= PART_MAX_BYTES]
+    if oversized:
+        raise SystemExit(
+            f"BUILD FAIL: parti de minimum 15 MB detectate: {oversized!r}"
+        )
+
+    source_hash_file = PARTS_DIRECTORY / "SOURCE_PAYLOAD.sha256"
+    match = re.fullmatch(
+        r"([0-9a-f]{64})  EMP-UTILITY-SOURCE\.zip\n?",
+        source_hash_file.read_text(encoding="ascii"),
+    )
+    if not match:
+        raise SystemExit("BUILD FAIL: SOURCE_PAYLOAD.sha256 invalid")
+    source_hash = hashlib.sha256()
+    for path in parts:
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                source_hash.update(block)
+    if source_hash.hexdigest() != match.group(1):
+        raise SystemExit("BUILD FAIL: hash-ul payloadului reasamblat este gresit")
+
+    part_manifest = PARTS_DIRECTORY / "PARTS_MANIFEST.sha256"
+    lines = part_manifest.read_text(encoding="ascii").splitlines()
+    expected_part_hashes = {}
+    for line in lines:
+        parsed = re.fullmatch(
+            r"([0-9a-f]{64})  (EMP-UTILITY-SOURCE\.zip\.part\d{3})", line)
+        if not parsed:
+            raise SystemExit(f"BUILD FAIL: linie PARTS_MANIFEST invalida: {line!r}")
+        expected_part_hashes[parsed.group(2)] = parsed.group(1)
+    if set(expected_part_hashes) != set(actual_names):
+        raise SystemExit("BUILD FAIL: PARTS_MANIFEST nu corespunde listei de parti")
+    for path in parts:
+        if digest(path) != expected_part_hashes[path.name]:
+            raise SystemExit(f"BUILD FAIL: hash gresit pentru {path.name}")
+    print(
+        f"REPOSITORY_PAYLOAD_GATE_PASS parts={len(parts)} "
+        f"max_bytes={max(path.stat().st_size for path in parts)}"
+    )
 
 
 def validate_python_sources() -> None:
@@ -271,6 +326,7 @@ def build_zip() -> None:
 
 
 def main() -> None:
+    validate_repository_payload()
     cleanup()
     validate_python_sources()
     validate_powershell()
