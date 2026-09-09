@@ -212,9 +212,31 @@ try {
     Add-Check "Server HTTP local" ($api.StatusCode -eq 200 -and $page.StatusCode -eq 200) "port=$portFound api=$($api.StatusCode) pagina=$($page.StatusCode)"
     $versionObject = $api.Content | ConvertFrom-Json
     Add-Check "Identitate si versiune API" ($versionObject.platforma -eq "EMP UTILITY" -and "$($versionObject.versiune)" -match "^1\.3(?:\s|$)") ($api.Content)
-    $cacheHeader = "$($api.Headers['Cache-Control'])"
-    $oldPublicReference = ($page.Content -match "(?i)Platforma[ -]PTE|EMP UTILITY\s+1\.[012]|4\.1[0-9]")
-    Add-Check "Pagina curenta si cache vechi exclus" ($page.Content -match "EMP UTILITY" -and $cacheHeader -match "no-store" -and -not $oldPublicReference) "cache=$cacheHeader; referinta_veche=$oldPublicReference"
+    # Antetele anti-cache apartin raspunsului HTML de la /, nu raspunsului JSON
+    # de la /api/versiune. WebHeaderCollection trateaza numele fara distinctie
+    # intre litere mari si mici.
+    $cacheHeader = "$($page.Headers['Cache-Control'])"
+    $pragmaHeader = "$($page.Headers['Pragma'])"
+    $cacheOk = (
+        $cacheHeader -match "(?i)\bno-store\b" -and
+        $cacheHeader -match "(?i)\bno-cache\b" -and
+        $cacheHeader -match "(?i)\bmust-revalidate\b" -and
+        $pragmaHeader -match "(?i)\bno-cache\b"
+    )
+
+    # Comentariile HTML pot contine istoric tehnic legitim (de exemplu 4.12.1)
+    # si nu sunt continut public randat. Le eliminam inainte de controlul identitatii,
+    # dar pastram scripturile si textele active in domeniul verificat.
+    $activePageContent = [regex]::Replace($page.Content, "(?s)<!--.*?-->", "")
+    $oldReferencePattern = "(?i)\bPlatforma[ -]PTE\b|\bEMP UTILITY\s+1\.[012](?![0-9])|\bv?4\.1[0-9](?:\.[0-9]+)?\b"
+    $oldReferences = @(
+        [regex]::Matches($activePageContent, $oldReferencePattern) |
+            ForEach-Object { $_.Value } |
+            Sort-Object -Unique
+    )
+    $oldPublicReference = ($oldReferences.Count -gt 0)
+    $pageIdentityOk = ($activePageContent -match "(?i)\bEMP UTILITY\b")
+    Add-Check "Pagina curenta si cache vechi exclus" ($pageIdentityOk -and $cacheOk -and -not $oldPublicReference) "cache=$cacheHeader; pragma=$pragmaHeader; referinte_vechi=$($oldReferences -join ', ')"
 
     $sentinel = Join-Path $empRoot "Data\proiecte\CI_REINSTALL_SENTINEL.txt"
     "DATE_PASTRATE" | Set-Content -Encoding ASCII $sentinel
