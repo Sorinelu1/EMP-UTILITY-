@@ -76,6 +76,81 @@ function Stop-PrivatePython {
         ForEach-Object { Invoke-CimMethod -InputObject $_ -MethodName Terminate | Out-Null }
 }
 
+function Invoke-LocalHttp([string]$Uri, [int]$TimeoutMs = 500) {
+    $request = [Net.HttpWebRequest]::Create($Uri)
+    $request.Proxy = $null
+    $request.Timeout = $TimeoutMs
+    $request.ReadWriteTimeout = $TimeoutMs
+    $response = $request.GetResponse()
+    try {
+        $reader = New-Object IO.StreamReader($response.GetResponseStream(), [Text.Encoding]::UTF8)
+        try { $content = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        return [pscustomobject]@{
+            StatusCode = [int]$response.StatusCode
+            Content = $content
+            Headers = $response.Headers
+        }
+    } finally {
+        $response.Close()
+    }
+}
+
+function Wait-LocalServer([int]$TimeoutSeconds = 30) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        foreach ($port in 8765..8784) {
+            try {
+                $apiResult = Invoke-LocalHttp "http://127.0.0.1:$port/api/versiune" 300
+                if ($apiResult.StatusCode -ne 200) { continue }
+                $versionResult = $apiResult.Content | ConvertFrom-Json
+                if ($versionResult.platforma -ne "EMP UTILITY") { continue }
+                $pageResult = Invoke-LocalHttp "http://127.0.0.1:$port/" 700
+                if ($pageResult.StatusCode -eq 200) {
+                    return [pscustomobject]@{
+                        Port = $port
+                        Api = $apiResult
+                        Page = $pageResult
+                    }
+                }
+            } catch {}
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    return $null
+}
+
+function Write-ServerDiagnostic([string]$Reason) {
+    $diagnosticPath = Join-Path $artifactsResolved "DIAGNOSTIC_SERVER_START.txt"
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("data_ora_utc=" + (Get-Date).ToUniversalTime().ToString("o"))
+    $lines.Add("motiv=" + $Reason)
+    $lines.Add("python_privat=" + $privatePython)
+    $lines.Add("procese_python_private:")
+    try {
+        @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction Stop |
+            Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $privatePython }) |
+            ForEach-Object { $lines.Add("PID=$($_.ProcessId) CMD=$($_.CommandLine)") }
+    } catch {
+        $lines.Add("PROCESE_INDISPONIBILE: $($_.Exception.Message)")
+    }
+    $lines.Add("porturi_locale_listen_8765_8784:")
+    try {
+        @(Get-NetTCPConnection -State Listen -ErrorAction Stop |
+            Where-Object { $_.LocalPort -ge 8765 -and $_.LocalPort -le 8784 }) |
+            ForEach-Object { $lines.Add("$($_.LocalAddress):$($_.LocalPort) PID=$($_.OwningProcess)") }
+    } catch {
+        $lines.Add("PORTURI_INDISPONIBILE: $($_.Exception.Message)")
+    }
+    $startupLog = Join-Path $empRoot "Data\loguri\pornire_jurnal.txt"
+    $lines.Add("jurnal_pornire=" + $startupLog)
+    if (Test-Path $startupLog) {
+        $lines.AddRange([string[]]@(Get-Content $startupLog -Tail 250 -ErrorAction SilentlyContinue))
+    } else {
+        $lines.Add("JURNAL_PORNIRE_LIPSA")
+    }
+    $lines | Set-Content -Encoding UTF8 $diagnosticPath
+}
+
 try {
     if (Test-Path $packageDir) { Remove-Item -Recurse -Force $packageDir }
     New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
@@ -103,6 +178,7 @@ try {
     $env:HTTPS_PROXY = "http://127.0.0.1:9"
     $env:NO_PROXY = "127.0.0.1,localhost"
     $env:EMP_UTILITY_CLEAN_RUNNER = "1"
+    $env:EMP_UTILITY_HEADLESS = "1"
 
     $bootstrap = Join-Path $packageDir "00_INSTALEAZA_SI_PORNESTE_EMP_UTILITY.bat"
     $bootstrapOutput = & $env:ComSpec /d /c "`"$bootstrap`"" 2>&1
@@ -127,18 +203,12 @@ try {
         Add-Check "Raport PASS pe Windows: $name" ($obj.verdict -eq "PASS" -and "$($obj.sistem_operare)" -match "Windows") "$($obj.verdict); $($obj.sistem_operare)"
     }
 
-    $api = $null; $page = $null; $portFound = $null
-    for ($attempt = 0; $attempt -lt 100 -and -not $api; $attempt++) {
-        foreach ($port in 8765..8784) {
-            try {
-                $api = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/api/versiune" -TimeoutSec 1
-                $page = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/" -TimeoutSec 2
-                $portFound = $port
-                break
-            } catch { $api = $null; $page = $null }
-        }
-        if (-not $api) { Start-Sleep -Milliseconds 300 }
+    $serverResult = Wait-LocalServer 30
+    if (-not $serverResult) {
+        Write-ServerDiagnostic "Niciun server EMP UTILITY nu a raspuns in maximum 30 de secunde."
+        throw "Serverul local nu a pornit in maximum 30 de secunde; vezi DIAGNOSTIC_SERVER_START.txt"
     }
+    $api = $serverResult.Api; $page = $serverResult.Page; $portFound = $serverResult.Port
     Add-Check "Server HTTP local" ($api.StatusCode -eq 200 -and $page.StatusCode -eq 200) "port=$portFound api=$($api.StatusCode) pagina=$($page.StatusCode)"
     $versionObject = $api.Content | ConvertFrom-Json
     Add-Check "Identitate si versiune API" ($versionObject.platforma -eq "EMP UTILITY" -and "$($versionObject.versiune)" -match "^1\.3(?:\s|$)") ($api.Content)
